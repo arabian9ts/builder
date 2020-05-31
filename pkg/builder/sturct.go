@@ -95,9 +95,12 @@ func (st PkgStruct) DefineBuilderConstructors(file *File) {
 			argType = argType[typeIdx+1:]
 		}
 
-		biilder, found := st.BuildTagValue(i)
-		if found && biilder != "" {
-			idef = biilder
+		build, _ := st.BuildTagValue(i)
+		if build == "-" {
+			continue
+		}
+		if build != "" {
+			idef = build
 		}
 
 		file.Func().Params(Id(receiver).Op("*").Id(builder)).
