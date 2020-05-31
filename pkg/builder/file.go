@@ -51,7 +51,10 @@ func (file PkgFile) parsePkgStructs() (pkgStructs []PkgStruct) {
 			}
 
 			st := file.pkgScope.Lookup(typeSpec.Name.Name)
-			sturctMeta := st.Type().Underlying().(*types.Struct)
+			sturctMeta, ok := st.Type().Underlying().(*types.Struct)
+			if !ok {
+				continue
+			}
 
 			pkgStruct := PkgStruct{
 				fset: file.fset,
