@@ -2,9 +2,12 @@ package builder
 
 import (
 	"errors"
+	"fmt"
 	"go/ast"
+	"go/importer"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 )
@@ -36,7 +39,28 @@ func (pkg *Package) ParsePkgFiles() (files []PkgFile) {
 			gendecls = append(gendecls, gendecl)
 		}
 
-		file := PkgFile{f, pkg.fset, gendecls, pkg.fset.File(f.Pos()).Name(), f.Name.String()}
+		conf := types.Config{
+			Importer: importer.Default(),
+			Error: func(err error) {
+				fmt.Printf("!!! %#v\n", err)
+			},
+		}
+
+		// limit access over files in same package
+		pkgMeta, err := conf.Check(f.Name.String(), pkg.fset, []*ast.File{f}, nil)
+		if err != nil {
+			fmt.Printf("!!! %#v\n", err)
+			continue
+		}
+
+		file := PkgFile{
+			astFile:  f,
+			fset:     pkg.fset,
+			gendecls: gendecls,
+			FileName: pkg.fset.File(f.Pos()).Name(),
+			PkgName:  f.Name.String(),
+			pkgScope: pkgMeta.Scope(),
+		}
 		files = append(files, file)
 	}
 

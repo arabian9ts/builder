@@ -60,7 +60,6 @@ func CreateBuilder(targetPkg string) error {
 	files := pkg.ParsePkgFiles()
 	for _, file := range files {
 		pos := strings.LastIndex(file.FileName, ".")
-
 		fileName := fmt.Sprintf("%s_builder.go", file.FileName[:pos])
 		fp, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0755)
 		if err != nil {

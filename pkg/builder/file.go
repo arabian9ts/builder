@@ -3,6 +3,7 @@ package builder
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 
 	. "github.com/dave/jennifer/jen"
 )
@@ -13,6 +14,7 @@ type PkgFile struct {
 	gendecls []*ast.GenDecl
 	FileName string
 	PkgName  string
+	pkgScope *types.Scope
 }
 
 func (file PkgFile) GenerateBuilder() string {
@@ -32,23 +34,18 @@ func (file PkgFile) GenerateBuilder() string {
 func (file PkgFile) parsePkgStructs() (pkgStructs []PkgStruct) {
 	for _, decl := range file.gendecls {
 		for _, spec := range decl.Specs {
-			typeSpect, ok := spec.(*ast.TypeSpec)
+			typeSpec, ok := spec.(*ast.TypeSpec)
 			if !ok {
 				continue
 			}
 
-			st, ok := typeSpect.Type.(*ast.StructType)
-			if !ok {
-				continue
-			}
+			st := file.pkgScope.Lookup(typeSpec.Name.Name)
+			sturctMeta := st.Type().Underlying().(*types.Struct)
 
 			pkgStruct := PkgStruct{
-				fset:          file.fset,
-				astStructType: st,
-				astFile:       file.astFile,
-				StructName:    typeSpect.Name.Name,
-				FileName:      file.FileName,
-				PkgName:       file.PkgName,
+				fset: file.fset,
+				name: typeSpec.Name.Name,
+				meta: sturctMeta,
 			}
 			pkgStructs = append(pkgStructs, pkgStruct)
 		}

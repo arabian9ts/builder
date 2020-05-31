@@ -8,12 +8,7 @@ import (
 )
 
 func genBuilder(targetPkg string) {
-	err := fileoperator.CleanBuilder(targetPkg)
-	if err != nil {
-		panic(err)
-	}
-
-	err = fileoperator.CreateBuilder(targetPkg)
+	err := fileoperator.CreateBuilder(targetPkg)
 	if err != nil {
 		panic(err)
 	}
