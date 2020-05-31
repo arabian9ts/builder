@@ -4,9 +4,16 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"reflect"
 	"strings"
 
 	. "github.com/dave/jennifer/jen"
+)
+
+const (
+	GETTER_TAG_VALUE = "get"
+	SETTER_TAG_VALUE = "set"
+	BUILD_TAG_VALUE  = "build"
 )
 
 type PkgStruct struct {
@@ -88,6 +95,11 @@ func (st PkgStruct) DefineBuilderConstructors(file *File) {
 			argType = argType[typeIdx+1:]
 		}
 
+		biilder, found := st.BuildTagValue(i)
+		if found && biilder != "" {
+			idef = biilder
+		}
+
 		file.Func().Params(Id(receiver).Op("*").Id(builder)).
 			Id(idef).
 			Params(Id(argment).Id(argType)).
@@ -128,4 +140,87 @@ func (st PkgStruct) DefineBuildFunc(file *File) {
 				Op("&").Id(st.name).Values(dict),
 			),
 		)
+}
+
+func (st PkgStruct) BuildTagValue(fieldNum int) (buildname string, found bool) {
+	tag := st.meta.Tag(fieldNum)
+	buildname, found = reflect.StructTag(tag).Lookup(BUILD_TAG_VALUE)
+	return
+}
+
+func (st PkgStruct) GetterTagValue(fieldNum int) (gettername string, found bool) {
+	tag := st.meta.Tag(fieldNum)
+	gettername, found = reflect.StructTag(tag).Lookup(GETTER_TAG_VALUE)
+	return
+}
+
+func (st PkgStruct) SetterTagValue(fieldNum int) (settername string, found bool) {
+	tag := st.meta.Tag(fieldNum)
+	settername, found = reflect.StructTag(tag).Lookup(SETTER_TAG_VALUE)
+	return
+}
+
+func (st PkgStruct) DefineAccessors(file *File) {
+	// getter
+	{
+		receiver := strings.ToLower(st.name)
+		for i := 0; i < st.meta.NumFields(); i++ {
+			field := st.meta.Field(i)
+			argType := field.Type().String()
+
+			typeIdx := strings.LastIndex(argType, ".")
+			if 0 < typeIdx {
+				argType = argType[typeIdx+1:]
+			}
+
+			getter, found := st.GetterTagValue(i)
+			if !found {
+				continue
+			}
+			if getter == "" {
+				getter = fmt.Sprintf("Get%s", strings.Title(field.Name()))
+			}
+
+			file.Func().Params(Id(receiver).Op("*").Id(st.name)).
+				Id(getter).
+				Params().
+				Params(Id(argType)).
+				Block(
+					Return(Id(receiver).Op(".").Id(field.Name())),
+				).
+				Line()
+		}
+	}
+
+	// setter
+	{
+		receiver := strings.ToLower(st.name)
+		for i := 0; i < st.meta.NumFields(); i++ {
+			field := st.meta.Field(i)
+			argType := field.Type().String()
+			argument := strings.ToLower(field.Name())
+
+			typeIdx := strings.LastIndex(argType, ".")
+			if 0 < typeIdx {
+				argType = argType[typeIdx+1:]
+			}
+
+			setter, found := st.SetterTagValue(i)
+			if !found {
+				continue
+			}
+			if setter == "" {
+				setter = fmt.Sprintf("Set%s", strings.Title(field.Name()))
+			}
+
+			file.Func().Params(Id(receiver).Op("*").Id(st.name)).
+				Id(setter).
+				Params(Id(argument).Id(argType)).
+				Params().
+				Block(
+					Id(receiver).Op(".").Id(field.Name()).Op("=").Id(argument),
+				).
+				Line()
+		}
+	}
 }

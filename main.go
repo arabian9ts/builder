@@ -8,10 +8,19 @@ import (
 )
 
 func genBuilder(targetPkg string) {
+	fmt.Println(">>> Generating Builder ...")
 	err := fileoperator.CreateBuilder(targetPkg)
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println(">>> Generating Accessor ...")
+	err = fileoperator.CreateAccessor(targetPkg)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Generate Completed")
 }
 
 func main() {

@@ -31,6 +31,17 @@ func (file PkgFile) GenerateBuilder() string {
 	return f.GoString()
 }
 
+func (file PkgFile) GenerateAccessor() string {
+	f := NewFile(file.PkgName)
+
+	structs := file.parsePkgStructs()
+	for _, st := range structs {
+		st.DefineAccessors(f)
+	}
+
+	return f.GoString()
+}
+
 func (file PkgFile) parsePkgStructs() (pkgStructs []PkgStruct) {
 	for _, decl := range file.gendecls {
 		for _, spec := range decl.Specs {
