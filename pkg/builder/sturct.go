@@ -1,35 +1,37 @@
 package builder
 
 import (
-	"bytes"
 	"fmt"
-	"go/ast"
-	"go/printer"
 	"go/token"
+	"go/types"
+	"reflect"
 	"strings"
 
 	. "github.com/dave/jennifer/jen"
 )
 
+const (
+	GETTER_TAG_VALUE = "get"
+	SETTER_TAG_VALUE = "set"
+	BUILD_TAG_VALUE  = "build"
+)
+
 type PkgStruct struct {
-	fset          *token.FileSet
-	astStructType *ast.StructType
-	astFile       *ast.File
-	StructName    string
-	FileName      string
-	PkgName       string
+	fset *token.FileSet
+	name string
+	meta *types.Struct
 }
 
 func (st PkgStruct) receiverName() string {
-	return fmt.Sprintf("%sBuilder", strings.ToLower(st.StructName))
+	return fmt.Sprintf("%sBuilder", strings.ToLower(st.name))
 }
 
 func (st PkgStruct) builderName() string {
-	return fmt.Sprintf("%sBuilder", strings.Title(st.StructName))
+	return fmt.Sprintf("%sBuilder", strings.Title(st.name))
 }
 
 func (st PkgStruct) builderInitializerName() string {
-	return fmt.Sprintf("New%sBuilder", strings.Title(st.StructName))
+	return fmt.Sprintf("New%sBuilder", strings.Title(st.name))
 }
 
 func (st PkgStruct) DefineBuilderInitializer(file *File) {
@@ -47,20 +49,22 @@ func (st PkgStruct) DefineBuilderInitializer(file *File) {
 }
 
 func (st PkgStruct) DefineBuilderStruct(file *File) {
-	fields := make([]Code, 0, len(st.astStructType.Fields.List))
-	for _, fld := range st.astStructType.Fields.List {
-		if len(fld.Names) <= 0 {
+	fields := make([]Code, 0, st.meta.NumFields())
+	for i := 0; i < st.meta.NumFields(); i++ {
+		fld := st.meta.Field(i)
+		if len(fld.Name()) <= 0 {
 			continue
 		}
 
-		var tbuf bytes.Buffer
-		err := printer.Fprint(&tbuf, st.fset, fld.Type)
-		if err != nil {
-			continue
+		attrName := strings.ToLower(fld.Name())
+		fieldName := fld.Type().String()
+
+		typeIdx := strings.LastIndex(fieldName, ".")
+		if 0 < typeIdx {
+			fieldName = fieldName[typeIdx+1:]
 		}
 
-		attr := strings.ToLower(fld.Names[0].Name)
-		field := Id(attr).Id(tbuf.String())
+		field := Id(attrName).Id(fieldName)
 		fields = append(fields, field)
 	}
 
@@ -75,21 +79,26 @@ func (st PkgStruct) DefineBuilderStruct(file *File) {
 func (st PkgStruct) DefineBuilderConstructors(file *File) {
 	builder := st.builderName()
 	receiver := st.receiverName()
-	for _, field := range st.astStructType.Fields.List {
-		if len(field.Names) <= 0 {
+	for i := 0; i < st.meta.NumFields(); i++ {
+		field := st.meta.Field(i)
+		if len(field.Name()) <= 0 {
 			continue
 		}
 
-		var tbuf bytes.Buffer
-		err := printer.Fprint(&tbuf, st.fset, field.Type)
-		if err != nil {
-			continue
-		}
-
-		argType := tbuf.String()
-		attr := strings.ToLower(field.Names[0].Name)
+		argType := field.Type().String()
+		attr := strings.ToLower(field.Name())
 		idef := strings.Title(attr)
 		argment := strings.ToLower(attr)
+
+		typeIdx := strings.LastIndex(argType, ".")
+		if 0 < typeIdx {
+			argType = argType[typeIdx+1:]
+		}
+
+		biilder, found := st.BuildTagValue(i)
+		if found && biilder != "" {
+			idef = biilder
+		}
 
 		file.Func().Params(Id(receiver).Op("*").Id(builder)).
 			Id(idef).
@@ -107,18 +116,13 @@ func (st PkgStruct) DefineBuildFunc(file *File) {
 	dict := Dict{}
 	builder := st.builderName()
 	receiver := st.receiverName()
-	for _, field := range st.astStructType.Fields.List {
-		if len(field.Names) <= 0 {
+	for i := 0; i < st.meta.NumFields(); i++ {
+		field := st.meta.Field(i)
+		if len(field.Name()) <= 0 {
 			continue
 		}
 
-		var tbuf bytes.Buffer
-		err := printer.Fprint(&tbuf, st.fset, field.Type)
-		if err != nil {
-			continue
-		}
-
-		structAttr := field.Names[0].Name
+		structAttr := field.Name()
 		builderAttr := strings.ToLower(structAttr)
 		dict[Id(structAttr)] = Id(receiver).Op(".").Id(builderAttr)
 	}
@@ -130,10 +134,93 @@ func (st PkgStruct) DefineBuildFunc(file *File) {
 	file.Func().Params(Id(receiver).Id(builder)).
 		Id("Build").
 		Params().
-		Params(Op("*").Id(st.StructName)).
+		Params(Op("*").Id(st.name)).
 		Block(
 			Return(
-				Op("&").Id(st.StructName).Values(dict),
+				Op("&").Id(st.name).Values(dict),
 			),
 		)
+}
+
+func (st PkgStruct) BuildTagValue(fieldNum int) (buildname string, found bool) {
+	tag := st.meta.Tag(fieldNum)
+	buildname, found = reflect.StructTag(tag).Lookup(BUILD_TAG_VALUE)
+	return
+}
+
+func (st PkgStruct) GetterTagValue(fieldNum int) (gettername string, found bool) {
+	tag := st.meta.Tag(fieldNum)
+	gettername, found = reflect.StructTag(tag).Lookup(GETTER_TAG_VALUE)
+	return
+}
+
+func (st PkgStruct) SetterTagValue(fieldNum int) (settername string, found bool) {
+	tag := st.meta.Tag(fieldNum)
+	settername, found = reflect.StructTag(tag).Lookup(SETTER_TAG_VALUE)
+	return
+}
+
+func (st PkgStruct) DefineAccessors(file *File) {
+	// getter
+	{
+		receiver := strings.ToLower(st.name)
+		for i := 0; i < st.meta.NumFields(); i++ {
+			field := st.meta.Field(i)
+			argType := field.Type().String()
+
+			typeIdx := strings.LastIndex(argType, ".")
+			if 0 < typeIdx {
+				argType = argType[typeIdx+1:]
+			}
+
+			getter, found := st.GetterTagValue(i)
+			if !found {
+				continue
+			}
+			if getter == "" {
+				getter = fmt.Sprintf("Get%s", strings.Title(field.Name()))
+			}
+
+			file.Func().Params(Id(receiver).Op("*").Id(st.name)).
+				Id(getter).
+				Params().
+				Params(Id(argType)).
+				Block(
+					Return(Id(receiver).Op(".").Id(field.Name())),
+				).
+				Line()
+		}
+	}
+
+	// setter
+	{
+		receiver := strings.ToLower(st.name)
+		for i := 0; i < st.meta.NumFields(); i++ {
+			field := st.meta.Field(i)
+			argType := field.Type().String()
+			argument := strings.ToLower(field.Name())
+
+			typeIdx := strings.LastIndex(argType, ".")
+			if 0 < typeIdx {
+				argType = argType[typeIdx+1:]
+			}
+
+			setter, found := st.SetterTagValue(i)
+			if !found {
+				continue
+			}
+			if setter == "" {
+				setter = fmt.Sprintf("Set%s", strings.Title(field.Name()))
+			}
+
+			file.Func().Params(Id(receiver).Op("*").Id(st.name)).
+				Id(setter).
+				Params(Id(argument).Id(argType)).
+				Params().
+				Block(
+					Id(receiver).Op(".").Id(field.Name()).Op("=").Id(argument),
+				).
+				Line()
+		}
+	}
 }
