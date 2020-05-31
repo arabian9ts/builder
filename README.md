@@ -7,32 +7,41 @@ So, builder generates model builder structs and funcs.
 
 ## Installation
 ```sh
-go get -u github.com/arabian9ts/builder
+$ go get -u github.com/arabian9ts/builder
 ```
 
 ## Example
 This struct express user entity and is in `./entity` package.
 ```go
 type User struct {
-	id        string
-	name      string
+	id        string `build:"ID" get:"GetID" set:"SetID"`
+	name      string `build:"" get:"" set:""`
 	digest    string
-	timestamp int64
+	timestamp int64  `get:"" set:""`
 }
 ```
 
 To generate user builders, specify the target package(s).
 ```sh
-builder entity
+$ builder entity
 ```
 
 Then, user builder is generated as following.
-```go
+
+**user_builder.go**
+```user_builder.go
+type UserBuilder struct {
+	id        string
+	name      string
+	digest    string
+	timestamp int64
+}
+
 func NewUserBuilder() *UserBuilder {
 	return &UserBuilder{}
 }
 
-func (userBuilder *UserBuilder) Id(id string) *UserBuilder {
+func (userBuilder *UserBuilder) ID(id string) *UserBuilder {
 	userBuilder.id = id
 	return userBuilder
 }
@@ -60,17 +69,45 @@ func (userBuilder UserBuilder) Build() *User {
 		timestamp: userBuilder.timestamp,
 	}
 }
+```
+
+**user_accessor.go**
+```user_accessor.go
+func (user *User) GetID() string {
+	return user.id
+}
+
+func (user *User) GetName() string {
+	return user.name
+}
+
+func (user *User) GetTimestamp() int64 {
+	return user.timestamp
+}
+
+func (user *User) SetID(id string) {
+	user.id = id
+}
+
+func (user *User) SetName(name string) {
+	user.name = name
+}
+
+func (user *User) SetTimestamp(timestamp int64) {
+	user.timestamp = timestamp
+}
+
 ``` 
 
 The Usage of these builder code is ...
 ```go
 user := NewUserBuilder().
-    Id("id").
+    ID("id").
     Name("name").
     Timestamp(time.Now().Unix()).
     Build()
 ```
 
 ## ToDo
-- [ ] skip struct tag for ignore generating builder func.
-- [ ] getter or setter func with struct tag
+- [x] skip struct tag for ignore generating builder func.
+- [x] getter or setter func with struct tag
